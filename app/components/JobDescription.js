@@ -30,7 +30,15 @@ export default function JobDescription() {
       })
 
       if (!response.ok) {
-        throw new Error('Failed to evaluate job description')
+        // Try to get error message from response
+        let errorData
+        try {
+          errorData = await response.json()
+        } catch (e) {
+          errorData = { error: `HTTP ${response.status}: ${response.statusText}` }
+        }
+        console.error('API Error Response:', errorData)
+        throw new Error(errorData.error || `Failed to evaluate job description (${response.status})`)
       }
 
       const data = await response.json()
@@ -42,6 +50,11 @@ export default function JobDescription() {
       setResult(data)
     } catch (err) {
       console.error('Error evaluating job description:', err)
+      console.error('Error details:', {
+        message: err.message,
+        stack: err.stack,
+        name: err.name,
+      })
       setError(err.message || 'Failed to evaluate job description. Please try again.')
     } finally {
       setIsLoading(false)

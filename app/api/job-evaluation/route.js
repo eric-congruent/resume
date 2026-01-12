@@ -150,10 +150,9 @@ ${JSON.stringify(timelineProjects, null, 2)}
 
 IMPORTANT: You must respond ONLY with valid JSON matching the required format above. Do not include any text before or after the JSON.`
 
-    // Reduce max_tokens for faster responses on Contentstack Launch
     const response = await anthropic.messages.create({
       model: model,
-      max_tokens: 3000, // Reduced from 4096 for faster responses
+      max_tokens: 4096, // Increased to allow for substantial responses
       system: systemMessage,
       messages: [
         {
@@ -169,20 +168,50 @@ IMPORTANT: You must respond ONLY with valid JSON matching the required format ab
     let parsedResponse
     try {
       // Extract JSON from response (handle cases where LLM adds markdown code blocks)
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        parsedResponse = JSON.parse(jsonMatch[0])
-      } else {
-        throw new Error('No JSON found in response')
+      let jsonText = responseText
+      
+      // Remove markdown code blocks if present
+      if (jsonText.startsWith('```json')) {
+        jsonText = jsonText.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      } else if (jsonText.startsWith('```')) {
+        jsonText = jsonText.replace(/^```\s*/, '').replace(/\s*```$/, '')
       }
+      
+      // Try to extract JSON object if it's embedded in other text
+      const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        jsonText = jsonMatch[0]
+      }
+      
+      // Check if JSON appears to be truncated
+      const openBraces = (jsonText.match(/\{/g) || []).length
+      const closeBraces = (jsonText.match(/\}/g) || []).length
+      const openBrackets = (jsonText.match(/\[/g) || []).length
+      const closeBrackets = (jsonText.match(/\]/g) || []).length
+      
+      if (openBraces !== closeBraces || openBrackets !== closeBrackets) {
+        console.warn('JSON appears to be truncated:', {
+          openBraces,
+          closeBraces,
+          openBrackets,
+          closeBrackets,
+          responseLength: responseText.length,
+          lastChars: jsonText.slice(-200)
+        })
+      }
+      
+      parsedResponse = JSON.parse(jsonText.trim())
     } catch (parseError) {
       console.error('Error parsing LLM response:', parseError)
-      console.error('Response text:', responseText)
+      console.error('Response text length:', responseText.length)
+      console.error('Response text (first 500 chars):', responseText.substring(0, 500))
+      console.error('Response text (last 500 chars):', responseText.substring(Math.max(0, responseText.length - 500)))
       // Fallback: return error response
       return NextResponse.json(
         {
-          error: 'Failed to parse AI response',
-          rawResponse: responseText,
+          error: 'Failed to parse AI response. The response may have been truncated.',
+          parseError: parseError.message,
+          responseLength: responseText.length,
         },
         { status: 500 }
       )
@@ -196,6 +225,8 @@ IMPORTANT: You must respond ONLY with valid JSON matching the required format ab
       message: error?.message,
       status: error?.status,
       statusText: error?.statusText,
+      stack: error?.stack,
+      cause: error?.cause,
     })
     
     // Provide more specific error messages
@@ -217,6 +248,8 @@ IMPORTANT: You must respond ONLY with valid JSON matching the required format ab
     } else if (error?.message) {
       errorMessage = `Error: ${error.message}`
     }
+    
+    console.error('Returning error to client:', { errorMessage, statusCode })
     
     return NextResponse.json(
       { error: errorMessage },
