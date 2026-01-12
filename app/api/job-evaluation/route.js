@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server'
 import { resumeData } from '../../data/resumeData'
 import { timelineProjects } from '../../data/timelineData'
 
+// Increase timeout for this route (up to 300 seconds on Vercel Pro, 60 on Hobby)
+export const maxDuration = 60
+
 export async function POST(request) {
   try {
     const { jobDescription } = await request.json()
@@ -184,9 +187,25 @@ IMPORTANT: You must respond ONLY with valid JSON matching the required format ab
     return NextResponse.json(parsedResponse)
   } catch (error) {
     console.error('Error calling Anthropic API:', error)
+    
+    // Provide more specific error messages
+    let errorMessage = 'Failed to evaluate job description'
+    let statusCode = 500
+    
+    if (error.message?.includes('timeout') || error.name === 'AbortError') {
+      errorMessage = 'Request timed out. The evaluation is taking too long. Please try with a shorter job description or try again later.'
+      statusCode = 504
+    } else if (error.message?.includes('rate limit')) {
+      errorMessage = 'Rate limit exceeded. Please try again in a moment.'
+      statusCode = 429
+    } else if (error.message?.includes('API key')) {
+      errorMessage = 'API configuration error. Please contact the site administrator.'
+      statusCode = 500
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to evaluate job description' },
-      { status: 500 }
+      { error: errorMessage },
+      { status: statusCode }
     )
   }
 }
