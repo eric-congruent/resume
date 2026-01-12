@@ -3,8 +3,11 @@ import { NextResponse } from 'next/server'
 import { resumeData } from '../../data/resumeData'
 import { timelineProjects } from '../../data/timelineData'
 
-// Increase timeout for this route (up to 300 seconds on Vercel Pro, 60 on Hobby)
+// Increase timeout for this route
+// Note: Contentstack Launch may have different limits
 export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 export async function POST(request) {
   try {
@@ -147,9 +150,10 @@ ${JSON.stringify(timelineProjects, null, 2)}
 
 IMPORTANT: You must respond ONLY with valid JSON matching the required format above. Do not include any text before or after the JSON.`
 
+    // Reduce max_tokens for faster responses on Contentstack Launch
     const response = await anthropic.messages.create({
       model: model,
-      max_tokens: 4096,
+      max_tokens: 3000, // Reduced from 4096 for faster responses
       system: systemMessage,
       messages: [
         {
@@ -187,20 +191,31 @@ IMPORTANT: You must respond ONLY with valid JSON matching the required format ab
     return NextResponse.json(parsedResponse)
   } catch (error) {
     console.error('Error calling Anthropic API:', error)
+    console.error('Error details:', {
+      name: error?.name,
+      message: error?.message,
+      status: error?.status,
+      statusText: error?.statusText,
+    })
     
     // Provide more specific error messages
     let errorMessage = 'Failed to evaluate job description'
     let statusCode = 500
     
-    if (error.message?.includes('timeout') || error.name === 'AbortError') {
+    if (error?.message?.includes('timeout') || error?.message?.includes('Request timeout') || error?.name === 'AbortError') {
       errorMessage = 'Request timed out. The evaluation is taking too long. Please try with a shorter job description or try again later.'
       statusCode = 504
-    } else if (error.message?.includes('rate limit')) {
+    } else if (error?.message?.includes('rate limit') || error?.status === 429) {
       errorMessage = 'Rate limit exceeded. Please try again in a moment.'
       statusCode = 429
-    } else if (error.message?.includes('API key')) {
+    } else if (error?.message?.includes('API key') || error?.message?.includes('authentication') || error?.status === 401) {
       errorMessage = 'API configuration error. Please contact the site administrator.'
       statusCode = 500
+    } else if (error?.status === 502 || error?.status === 503) {
+      errorMessage = 'Service temporarily unavailable. The evaluation service is experiencing issues. Please try again in a moment.'
+      statusCode = 503
+    } else if (error?.message) {
+      errorMessage = `Error: ${error.message}`
     }
     
     return NextResponse.json(
