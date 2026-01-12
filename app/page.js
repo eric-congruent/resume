@@ -5,6 +5,7 @@ import Timeline from './components/Timeline'
 import Resume from './components/Resume'
 import AIChat from './components/AIChat'
 import JobDescription from './components/JobDescription'
+import PasswordProtection from './components/PasswordProtection'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('timeline')
@@ -154,7 +155,8 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <PasswordProtection>
+      <div className="min-h-screen bg-gray-50">
       {/* Main Content Area */}
       <div className={`transition-all duration-300 ${showChat ? 'mr-0 md:mr-96' : ''}`}>
         {/* AI Question Input */}
@@ -262,6 +264,7 @@ export default function Home() {
         />
       )}
     </div>
+    </PasswordProtection>
   )
 }
 
